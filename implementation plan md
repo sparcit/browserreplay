@@ -1,0 +1,68 @@
+# Phase 1 Implementation Plan: Agentic Navigation MVP
+
+This document defines the implementation-ready plan for BrowserReplay Phase 1. The design is accessibility-first and state-machine-driven: observation is based on ARIA snapshot + screenshot + page metadata, actions are exposed through a compact browser tool set, and control flow is handled by explicit execution states with retries and approval checkpoints.
+
+## Step 1: Project Setup and Runtime Guardrails
+*   **Initialize Node.js + TypeScript Project:** Set up a new Node.js project with strict TypeScript settings.
+*   **Install Dependencies:**
+    *   Browser automation: `playwright`
+    *   AI integration: `@github/copilot-sdk`
+    *   CLI utilities: `enquirer` or `readline`
+    *   Utilities: `dotenv` and `zod` for config validation
+    *   Logging: `pino` (or equivalent structured logger)
+*   **Define Guardrails Early:** Configure `maxSteps`, per-step timeout, retry budgets, and token/cost budget limits before implementing the loop.
+
+## Step 2: Accessibility-First Observation Layer
+*   **Playwright Wrapper:** Create a `BrowserController` class to manage browser/context/page lifecycle and deterministic cleanup.
+*   **Primary Observation Contract:** Capture these fields on each observation tick:
+    *   ARIA snapshot (primary structured page state)
+    *   Screenshot path
+    *   Current URL and title
+    *   Small targeted metadata (focused element, form hints, and key interactive counts)
+*   **Fallback Element Resolution:** Keep numeric element IDs only as a fallback for ambiguous interactions, not as the primary page abstraction.
+*   **Snapshot Schema:** Define a typed `Snapshot` object shared across prompting, execution, and logging.
+
+## Step 3: AI Agent and Tool Contracts
+*   **Initialize AI Session:** Set up `CopilotClient` and a system prompt that enforces tool-driven behavior and clear termination criteria.
+*   **Define Compact Tools (JSON Schema):**
+    *   `navigate(url)`
+    *   `click(selector_or_hint)`
+    *   `type_text(selector_or_hint, text, submit?)`
+    *   `scroll(direction, amount?)`
+    *   `press_key(key)`
+    *   `request_human_approval(reason, action_summary)`
+    *   `finish(result, evidence)`
+*   **Dispatch Validation:** Validate all tool arguments before execution and return normalized tool results (`success`, `errorCode`, `message`, `stateHints`).
+
+## Step 4: Execution State Machine (Observe -> Decide -> Act -> Approve -> Recover)
+*   **Replace Free-Form ReAct with Explicit States:** Implement a state machine with `observe`, `decide`, `act`, `approve`, `recover`, and terminal states (`finished`, `failed`, `aborted`, `max_steps_exceeded`).
+*   **Prompt Composition Strategy:** Keep stable run context and compact action history first, then append fresh browser state after it to improve cache reuse and reduce token churn.
+*   **Action-Specific Readiness Checks:** Do not default to `network idle`.
+    *   After `navigate`: wait for URL/document readiness + targeted element presence
+    *   After `click`: wait for expected DOM change, URL transition, or modal state change
+    *   After `type_text`: verify value reflection and optional submit side effects
+    *   After `scroll`: verify viewport/content position change
+*   **Targeted Recovery Logic:**
+    *   Retry transient failures with capped exponential backoff
+    *   On stale/ambiguous target, re-observe and retry with updated hints
+    *   Detect no-progress loops and exit with actionable failure diagnostics
+
+## Step 5: Integrated Human-in-the-Loop (HITL)
+*   **Integrate HITL Into the State Machine:** `request_human_approval` transitions execution into `approve` state, then resumes or aborts without bolted-on side paths.
+*   **Approval Payload in CLI:** Show `reason`, `action_summary`, URL/title, and latest screenshot reference.
+*   **Resume/Abort Semantics:**
+    *   `Y`: return approval result to agent and continue execution
+    *   `N`: mark run `aborted`, persist reason, and stop safely
+*   **Auditability:** Log all approval checkpoints and user decisions as structured events.
+
+## Step 6: CLI Entry Point, Verification, and Handoff
+*   **CLI Entry Script (`index.ts`):** Prompt user for goal, validate input, initialize runtime config, and start the execution engine.
+*   **Runtime Visibility:** Stream structured step logs (state, selected action, retries, and outcomes) to the console.
+*   **Build-Order Completion:** Finalize CLI and output polish only after Steps 2-5 are implemented and validated.
+*   **Handoff Validation Scenarios:**
+    *   Scenario A: simple navigation and click
+    *   Scenario B: multi-step search/filter/select
+    *   Scenario C: sensitive action with HITL pause/resume/abort
+    *   Scenario D: ambiguous target fallback using numeric ID strategy
+    *   Scenario E: timeout/retry/recover path with graceful failure
+*   **Phase 1 Sign-Off Criteria:** Core scenarios pass, failures are recoverable or graceful, and no orphaned browser processes remain.
