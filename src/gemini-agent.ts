@@ -16,7 +16,7 @@ export class GeminiAgentClient implements AgentClient {
   private model: string;
   private tools: Tool[];
 
-  constructor(model: string = process.env.GEMINI_MODEL || "gemini-2.5-flash") {
+  constructor(model: string = process.env.GEMINI_MODEL || "gemini-flash-latest") {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY environment variable is required to use GeminiAgentClient.");
     }

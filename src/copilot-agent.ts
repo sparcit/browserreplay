@@ -32,7 +32,7 @@ export interface LiveUsageSummary {
   >;
 }
 
-export class LiveAgentClient implements AgentClient {
+export class CopilotAgentClient implements AgentClient {
   private client: CopilotClient;
   private session: Awaited<ReturnType<CopilotClient["createSession"]>> | null = null;
   private model: string;
@@ -423,7 +423,7 @@ ${truncatedAria}
     recentHistory: StepEvent[];
     snapshot: Snapshot;
   }): Promise<AgentDecision> {
-    baseLogger.info("LiveAgentClient: Requesting Copilot SDK completion...");
+    baseLogger.info("CopilotAgentClient: Requesting Copilot SDK completion...");
 
     await this.ensureSession();
 
