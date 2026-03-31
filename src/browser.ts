@@ -12,6 +12,7 @@ import {
   TargetHint
 } from "./types";
 import path from "path";
+import { baseLogger } from "./logger";
 
 export class PlaywrightBrowserController implements BrowserController {
   private browser: Browser | null = null;
@@ -73,9 +74,14 @@ export class PlaywrightBrowserController implements BrowserController {
   private resolveLocator(hint: TargetHint): Locator {
     if (!this.page) throw new Error("Browser not initialized");
     
-    // 1. role + name
+    // 1. role + name (or text if name not supplied)
     if (hint.role) {
-      return this.page.getByRole(hint.role as any, { name: hint.name, exact: true });
+      if (hint.name) {
+        return this.page.getByRole(hint.role as any, { name: hint.name, exact: false });
+      } else if (hint.text) {
+        return this.page.getByRole(hint.role as any, { name: hint.text, exact: false });
+      }
+      return this.page.getByRole(hint.role as any);
     }
     // 2. label
     if (hint.label) {
@@ -106,9 +112,32 @@ export class PlaywrightBrowserController implements BrowserController {
     if (!this.page) throw new Error("Browser not initialized");
     try {
       await this.page.goto(input.url, { timeout: this.config.navigationTimeoutMs, waitUntil: "domcontentloaded" });
+      
+      let dismissedCookieBanner = false;
+      // Auto-dismiss heuristic for common cooking consent overlays to save AI tokens and steps
+      try {
+        // We use a wildcard search waiting up to 5 seconds for the JS framework to render the injected banner
+        const acceptButtons = this.page.locator('button, [role="button"]').filter({ hasText: /accept.*(cookies|additional)/i });
+        
+        // Use waitFor so we don't instantly skip if the React/Vue frontend takes a second to mount it
+        await acceptButtons.first().waitFor({ state: 'visible', timeout: 2000 }).catch(() => {});
+        
+        if (await acceptButtons.count() > 0) {
+          await acceptButtons.first().click({ timeout: 2000, force: true });
+          // Wait briefly for modal to disappear and UI to settle
+          await this.page.waitForTimeout(1000);
+          dismissedCookieBanner = true;
+          baseLogger.info("Auto-dismissed cookie consent banner.");
+        }
+      } catch (e) {
+        // Silently swallow errors here so navigation still succeeds even if clicking fails
+      }
+
       return {
         success: true,
-        message: `Navigated to ${input.url}`,
+        message: dismissedCookieBanner 
+          ? `Navigated to ${input.url} and auto-dismissed cookie banner` 
+          : `Navigated to ${input.url}`,
         stateHints: [{ kind: "url_changed", value: input.url }]
       };
     } catch (error: any) {
@@ -124,12 +153,22 @@ export class PlaywrightBrowserController implements BrowserController {
       
       if (count === 0) return { success: false, errorCode: "TARGET_NOT_FOUND", message: "Target not found", stateHints: [] };
       
-      await target.first().click({ timeout: this.config.stepTimeoutMs });
-      
-      // Basic post-action stabilization
-      await this.page.waitForLoadState("domcontentloaded");
-      
-      return { success: true, message: "Clicked successfully", stateHints: [{ kind: "dom_changed" }] };
+      try {
+        await target.first().click({ timeout: this.config.stepTimeoutMs });
+        // Basic post-action stabilization
+        await this.page.waitForLoadState("domcontentloaded");
+        return { success: true, message: "Clicked successfully", stateHints: [{ kind: "dom_changed" }] };
+      } catch (clickError: any) {
+        if (clickError.message.includes("intercepts pointer events")) {
+           return { 
+             success: false, 
+             errorCode: "OVERLAY_INTERCEPT", 
+             message: "Click was blocked by an overlay or modal. You must dismiss the blocking modal first.", 
+             stateHints: [] 
+           };
+        }
+        throw clickError;
+      }
     } catch (error: any) {
       return { success: false, errorCode: "UNEXPECTED_ERROR", message: error.message, stateHints: [] };
     }
