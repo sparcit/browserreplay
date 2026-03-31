@@ -2,8 +2,7 @@ import "dotenv/config";
 import { ExecutionRunLogger, baseLogger } from "./logger";
 import { PlaywrightBrowserController } from "./browser";
 import { validateConfig, defaultConfig } from "./config";
-import { MockAgentClient } from "./agent";
-import { LiveAgentClient } from "./live-agent";
+import { CopilotAgentClient } from "./copilot-agent";
 import { GeminiAgentClient } from "./gemini-agent";
 import { StateExecutionEngine } from "./execution";
 import { randomUUID } from "crypto";
@@ -11,11 +10,11 @@ import { RunContext } from "./types";
 
 async function main() {
   const args = process.argv.slice(2);
-  const useLiveModel = args.includes("--live");
+  const useCopilot = args.includes("--copilot");
   const useGemini = args.includes("--gemini");
   
   const goal =
-    args.filter((arg) => arg !== "--live" && arg !== "--gemini").join(" ") ||
+    args.filter((arg) => arg !== "--copilot" && arg !== "--gemini").join(" ") ||
     "Navigate to bbc.com, click on the most widely read news article, and report back a summary";
   
   const runId = `run-${randomUUID()}`;
@@ -28,15 +27,12 @@ async function main() {
   
   // Conditionally load the appropriate client
   let agentClient;
-  if (useGemini) {
-    agentClient = new GeminiAgentClient();
-    baseLogger.info("Using Gemini Agent Client (--gemini)");
-  } else if (useLiveModel) {
-    agentClient = new LiveAgentClient();
-    baseLogger.info("Using LIVE Copilot SDK Agent Client");
+  if (useCopilot) {
+    agentClient = new CopilotAgentClient();
+    baseLogger.info("Using Copilot SDK Agent Client");
   } else {
-    agentClient = new MockAgentClient();
-    baseLogger.info("Using MOCK Agent Client (Pass --live or --gemini to use real model)");
+    agentClient = new GeminiAgentClient();
+    baseLogger.info("Using Gemini Agent Client (defaulting)");
   }
 
   const runContext: RunContext = {
@@ -69,7 +65,7 @@ async function main() {
     
     baseLogger.info({ finalResult }, "Execution loop finished");
 
-    if (useLiveModel && agentClient instanceof LiveAgentClient) {
+    if (useCopilot && agentClient instanceof CopilotAgentClient) {
       const usage = await agentClient.getUsageSummary();
       baseLogger.info(
         {
