@@ -180,7 +180,8 @@ RULES:
 4. Ensure your tool strings are clean and EXACTLY match the required schema.
 5. If you reach the exact conclusion and have the required evidence, call the 'finish' tool.
 6. If a requested action is highly sensitive (e.g. submitting a payment, deleting an account), call 'requestHumanApproval' first.
-7. If a tool fails with AMBIGUOUS_TARGET, do NOT repeat the same selector. Use the candidate hints from recent history to pick a more specific target or navigate directly.
+7. If a tool fails with OVERLAY_INTERCEPT, find the closest active "close", "decline", "maybe later", "not now" or "dismiss" button/link associated with the overlay and click it before retrying your original goal. If an exact role based selection fails, try omitting role and using only text.
+8. If a tool fails with AMBIGUOUS_TARGET, do NOT repeat the same selector. Use the candidate hints from recent history to pick a more specific target or navigate directly.
 
 Context Constraints:
 - Max allowed steps: ${context.config.maxSteps}
