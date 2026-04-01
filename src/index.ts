@@ -4,6 +4,7 @@ import { PlaywrightBrowserController } from "./browser";
 import { validateConfig, defaultConfig } from "./config";
 import { CopilotAgentClient } from "./copilot-agent";
 import { GeminiAgentClient } from "./gemini-agent";
+import { LocalAgentClient } from "./local-agent";
 import { StateExecutionEngine } from "./execution";
 import { randomUUID } from "crypto";
 import { RunContext } from "./types";
@@ -13,8 +14,9 @@ async function main() {
   const useCopilot = args.includes("--copilot");
   const useGemini = args.includes("--gemini");
   
+  // Anything not a flag is part of the goal
   const goal =
-    args.filter((arg) => arg !== "--copilot" && arg !== "--gemini").join(" ") ||
+    args.filter((arg) => !arg.startsWith("--")).join(" ") ||
     "Navigate to bbc.com, click on the most widely read news article, and report back a summary";
   
   const runId = `run-${randomUUID()}`;
@@ -25,14 +27,18 @@ async function main() {
   
   const browserController = new PlaywrightBrowserController(config, logger.getRunDir());
   
-  // Conditionally load the appropriate client
+  // Conditionally load the appropriate client (local default)
   let agentClient;
   if (useCopilot) {
     agentClient = new CopilotAgentClient();
     baseLogger.info("Using Copilot SDK Agent Client");
-  } else {
+  } else if (useGemini) {
     agentClient = new GeminiAgentClient();
-    baseLogger.info("Using Gemini Agent Client (defaulting)");
+    baseLogger.info("Using Gemini Agent Client");
+  } else {
+    // Default to Local Agent unless explicitly using another
+    agentClient = new LocalAgentClient();
+    baseLogger.info("Using Local Agent Client (llm-studio) as default");
   }
 
   const runContext: RunContext = {
