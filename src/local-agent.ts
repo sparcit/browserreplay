@@ -201,7 +201,7 @@ export class LocalAgentClient implements AgentClient {
                 },
               },
             },
-            required: ["result"],
+            required: ["result", "evidence"],
           },
         },
       },
